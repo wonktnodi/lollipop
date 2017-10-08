@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "default_max_rate": 0,
+  "client_max_rate": 0,
+  "throttling_header": "",
+  "timeout": "3000000ms",
+  "cache_ttl": "2s",
+  "host": [
+    "http://httpbin.org/"
+  ],
+  "name": "demo",
+  "debug": true,
+  "port": 8086,
+  "endpoints": [
+    {
+      "endpoint": "/anything",
+      "method": "GET",
+      "concurrent_calls": 1,
+      "client_max_rate": 0,
+      "backend": [
+        {
+          "url_pattern": "/uuid",
+          "encoding": "json",
+          "host": [
+            "http://httpbin.org"
+          ]
+        },
+        {
+          "url_pattern": "/ip",
+          "encoding": "json",
+          "host": [
+            "http://httpbin.org"
+          ]
+        }
+      ]
+    }
+  ]
+}

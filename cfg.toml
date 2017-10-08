@@ -1,0 +1,32 @@
+version = 1.0
+default_max_rate = 0
+client_max_rate = 0
+throttling_header = ""
+timeout = "3000000ms"
+cache_ttl = "300s"
+host = [
+  "http://httpbin.org/"
+]
+name = "demo"
+debug = true
+port = 8086
+
+[[endpoints]]
+endpoint = "/anything"
+method = "GET"
+concurrent_calls = 1.0
+client_max_rate = 0
+
+  [[endpoints.backend]]
+  url_pattern = "/uuid"
+  encoding = "json"
+  host = [
+    "http://httpbin.org"
+  ]
+
+  [[endpoints.backend]]
+  url_pattern = "/ip"
+  encoding = "json"
+  host = [
+    "http://httpbin.org"
+  ]
