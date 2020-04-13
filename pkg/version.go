@@ -13,4 +13,3 @@ var LollipopHeaderValue = fmt.Sprintf("Version %s", LollipopVersion)
 
 // LollipopUserAgent is the value of the user agent header sent to the backends
 var LollipopUserAgent = fmt.Sprintf("Lollipop Version %s", LollipopVersion)
-

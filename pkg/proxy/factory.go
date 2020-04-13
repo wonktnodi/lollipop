@@ -1,9 +1,9 @@
 package proxy
 
 import (
-    "github.com/wonktnodi/lollipop/pkg/config"
-    "github.com/wonktnodi/lollipop/pkg/log"
-    "github.com/wonktnodi/lollipop/pkg/sd"
+  "lollipop/pkg/config"
+  "lollipop/pkg/log"
+  "lollipop/pkg/sd"
 )
 
 // Factory creates proxies based on the received endpoint configuration.
@@ -12,68 +12,68 @@ import (
 // because they are intended to generate the complete proxy stack for a given frontend endpoint
 // the app would expose and they could wrap several proxies provided by a backend factory
 type Factory interface {
-    New(cfg *config.EndpointConfig) (Proxy, error)
+  New(cfg *config.EndpointConfig) (Proxy, error)
 }
 
 // DefaultFactory returns a default http proxy factory with the injected logger
 func DefaultFactory(logger log.Logger) Factory {
-    return NewDefaultFactory(httpProxy, logger)
+  return NewDefaultFactory(httpProxy, logger)
 }
 
 // DefaultFactoryWithSubscriber returns a default proxy factory with the injected logger and subscriber factory
 func DefaultFactoryWithSubscriber(logger log.Logger, sF sd.SubscriberFactory) Factory {
-    return NewDefaultFactoryWithSubscriber(httpProxy, logger, sF)
+  return NewDefaultFactoryWithSubscriber(httpProxy, logger, sF)
 }
 
 // NewDefaultFactory returns a default proxy factory with the injected proxy builder and logger
 func NewDefaultFactory(backendFactory BackendFactory, logger log.Logger) Factory {
-    return NewDefaultFactoryWithSubscriber(backendFactory, logger, sd.FixedSubscriberFactory)
+  return NewDefaultFactoryWithSubscriber(backendFactory, logger, sd.FixedSubscriberFactory)
 }
 
 // NewDefaultFactoryWithSubscriber returns a default proxy factory with the injected proxy builder,
 // logger and subscriber factory
 func NewDefaultFactoryWithSubscriber(backendFactory BackendFactory, logger log.Logger, sF sd.SubscriberFactory) Factory {
-    return defaultFactory{backendFactory, logger, sF}
+  return defaultFactory{backendFactory, logger, sF}
 }
 
 type defaultFactory struct {
-    backendFactory    BackendFactory
-    logger            log.Logger
-    subscriberFactory sd.SubscriberFactory
+  backendFactory    BackendFactory
+  logger            log.Logger
+  subscriberFactory sd.SubscriberFactory
 }
 
 // New implements the Factory interface
 func (pf defaultFactory) New(cfg *config.EndpointConfig) (p Proxy, err error) {
-    switch len(cfg.Backend) {
-    case 0:
-        err = ErrNoBackends
-    case 1:
-        p, err = pf.newSingle(cfg)
-    default:
-        p, err = pf.newMulti(cfg)
-    }
-    return
+  switch len(cfg.Backend) {
+  case 0:
+    err = ErrNoBackends
+  case 1:
+    p, err = pf.newSingle(cfg)
+  default:
+    p, err = pf.newMulti(cfg)
+  }
+  return
 }
 
 func (pf defaultFactory) newMulti(cfg *config.EndpointConfig) (p Proxy, err error) {
-    backendProxy := make([]Proxy, len(cfg.Backend))
-    for i, backend := range cfg.Backend {
-        backendProxy[i] = pf.newStack(backend)
-    }
-    p = NewMergeDataMiddleware(cfg)(backendProxy...)
-    return
+  backendProxy := make([]Proxy, len(cfg.Backend))
+  for i, backend := range cfg.Backend {
+    backendProxy[i] = pf.newStack(backend)
+  }
+  p = NewMergeDataMiddleware(cfg)(backendProxy...)
+  return
 }
 
 func (pf defaultFactory) newSingle(cfg *config.EndpointConfig) (Proxy, error) {
-    return pf.newStack(cfg.Backend[0]), nil
+  return pf.newStack(cfg.Backend[0]), nil
 }
 
 func (pf defaultFactory) newStack(backend *config.Backend) (p Proxy) {
-    p = pf.backendFactory(backend)
-    p = NewRoundRobinLoadBalancedMiddlewareWithSubscriber(pf.subscriberFactory(backend))(p)
-    if backend.ConcurrentCalls > 1 {
-        p = NewConcurrentMiddleware(backend)(p)
-    }
-    p = NewRequestBuilderMiddleware(backend)(p)
-    return
+  p = pf.backendFactory(backend)
+  p = NewRoundRobinLoadBalancedMiddlewareWithSubscriber(pf.subscriberFactory(backend))(p)
+  if backend.ConcurrentCalls > 1 {
+    p = NewConcurrentMiddleware(backend)(p)
+  }
+  p = NewRequestBuilderMiddleware(backend)(p)
+  return
 }

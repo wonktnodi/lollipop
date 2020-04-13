@@ -1,10 +1,10 @@
 package sd
 
-import "github.com/wonktnodi/lollipop/pkg/config"
+import "lollipop/pkg/config"
 
 // Subscriber keeps the set of backend hosts up to date
 type Subscriber interface {
-    Hosts() ([]string, error)
+  Hosts() ([]string, error)
 }
 
 // FixedSubscriber has a constant set of backend hosts and they never get updated
@@ -18,5 +18,5 @@ type SubscriberFactory func(*config.Backend) Subscriber
 
 // FixedSubscriberFactory builds a FixedSubscriber with the received config
 func FixedSubscriberFactory(cfg *config.Backend) Subscriber {
-    return FixedSubscriber(cfg.Host)
+  return FixedSubscriber(cfg.Host)
 }

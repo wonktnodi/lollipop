@@ -1,12 +1,12 @@
 package proxy
 
 import (
-    "errors"
-    "net/http"
-    "context"
-    "github.com/wonktnodi/lollipop/pkg/config"
-    "github.com/wonktnodi/lollipop/pkg/encoding"
-    "github.com/wonktnodi/lollipop/pkg/log"
+  "context"
+  "errors"
+  "lollipop/pkg/config"
+  "lollipop/pkg/encoding"
+  "lollipop/pkg/log"
+  "net/http"
 )
 
 // ErrInvalidStatusCode is the error returned by the http proxy when the received status code
@@ -23,14 +23,14 @@ var httpProxy = CustomHTTPProxyFactory(NewHTTPClient)
 
 // HTTPProxyFactory returns a BackendFactory. The Proxies it creates will use the received net/http.Client
 func HTTPProxyFactory(client *http.Client) BackendFactory {
-    return CustomHTTPProxyFactory(func(_ context.Context) *http.Client { return client })
+  return CustomHTTPProxyFactory(func(_ context.Context) *http.Client { return client })
 }
 
 // CustomHTTPProxyFactory returns a BackendFactory. The Proxies it creates will use the received HTTPClientFactory
 func CustomHTTPProxyFactory(cf HTTPClientFactory) BackendFactory {
-    return func(backend *config.Backend) Proxy {
-        return NewHTTPProxy(backend, cf, backend.Decoder)
-    }
+  return func(backend *config.Backend) Proxy {
+    return NewHTTPProxy(backend, cf, backend.Decoder)
+  }
 }
 
 // HTTPRequestExecutor defines the interface of the request executor for the HTTP transport protocol
@@ -38,66 +38,66 @@ type HTTPRequestExecutor func(ctx context.Context, req *http.Request) (*http.Res
 
 // DefaultHTTPRequestExecutor creates a HTTPRequestExecutor with the received HTTPClientFactory
 func DefaultHTTPRequestExecutor(clientFactory HTTPClientFactory) HTTPRequestExecutor {
-    return func(ctx context.Context, req *http.Request) (*http.Response, error) {
-        return clientFactory(ctx).Do(req.WithContext(ctx))
-    }
+  return func(ctx context.Context, req *http.Request) (*http.Response, error) {
+    return clientFactory(ctx).Do(req.WithContext(ctx))
+  }
 }
 
 // NewHTTPProxy creates a http proxy with the injected configuration, HTTPClientFactory and Decoder
 func NewHTTPProxy(remote *config.Backend, clientFactory HTTPClientFactory, decode encoding.Decoder) Proxy {
-    return NewHTTPProxyWithHTTPExecutor(remote, DefaultHTTPRequestExecutor(clientFactory), decode)
+  return NewHTTPProxyWithHTTPExecutor(remote, DefaultHTTPRequestExecutor(clientFactory), decode)
 }
 
 // NewHTTPProxyWithHTTPExecutor creates a http proxy with the injected configuration, HTTPRequestExecutor and Decoder
 func NewHTTPProxyWithHTTPExecutor(remote *config.Backend, requestExecutor HTTPRequestExecutor, decode encoding.Decoder) Proxy {
-    formatter := NewEntityFormatter(remote.Target, remote.Whitelist, remote.Blacklist, remote.Group, remote.Mapping)
+  formatter := NewEntityFormatter(remote.Target, remote.Whitelist, remote.Blacklist, remote.Group, remote.Mapping)
 
-    return func(ctx context.Context, request *Request) (*Response, error) {
-        log.Tracef("try to execute '%s %s'", request.Method, request.URL.String())
-        requestToBakend, err := http.NewRequest(request.Method, request.URL.String(), request.Body)
-        if err != nil {
-            return nil, err
-        }
-        requestToBakend.Header = request.Headers
-
-        resp, err := requestExecutor(ctx, requestToBakend)
-        requestToBakend.Body.Close()
-        select {
-        case <-ctx.Done():
-            return nil, ctx.Err()
-        default:
-        }
-        if err != nil {
-            return nil, err
-        }
-        if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-            return nil, ErrInvalidStatusCode
-        }
-
-        var data map[string]interface{}
-        err = decode(resp.Body, &data)
-        resp.Body.Close()
-        if err != nil {
-            return nil, err
-        }
-
-        r := formatter.Format(Response{Data: data, IsComplete: true})
-        return &r, nil
+  return func(ctx context.Context, request *Request) (*Response, error) {
+    log.Tracef("try to execute '%s %s'", request.Method, request.URL.String())
+    requestToBakend, err := http.NewRequest(request.Method, request.URL.String(), request.Body)
+    if err != nil {
+      return nil, err
     }
+    requestToBakend.Header = request.Headers
+
+    resp, err := requestExecutor(ctx, requestToBakend)
+    requestToBakend.Body.Close()
+    select {
+    case <-ctx.Done():
+      return nil, ctx.Err()
+    default:
+    }
+    if err != nil {
+      return nil, err
+    }
+    if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+      return nil, ErrInvalidStatusCode
+    }
+
+    var data map[string]interface{}
+    err = decode(resp.Body, &data)
+    resp.Body.Close()
+    if err != nil {
+      return nil, err
+    }
+
+    r := formatter.Format(Response{Data: data, IsComplete: true})
+    return &r, nil
+  }
 }
 
 // NewRequestBuilderMiddleware creates a proxy middleware that parses the request params received
 // from the outter layer and generates the path to the backend endpoints
 func NewRequestBuilderMiddleware(remote *config.Backend) Middleware {
-    return func(next ...Proxy) Proxy {
-        if len(next) > 1 {
-            panic(ErrTooManyProxies)
-        }
-        return func(ctx context.Context, request *Request) (*Response, error) {
-            r := request.Clone()
-            r.GeneratePath(remote.URLPattern)
-            r.Method = remote.Method
-            return next[0](ctx, &r)
-        }
+  return func(next ...Proxy) Proxy {
+    if len(next) > 1 {
+      panic(ErrTooManyProxies)
     }
+    return func(ctx context.Context, request *Request) (*Response, error) {
+      r := request.Clone()
+      r.GeneratePath(remote.URLPattern)
+      r.Method = remote.Method
+      return next[0](ctx, &r)
+    }
+  }
 }
