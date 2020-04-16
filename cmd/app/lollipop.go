@@ -4,19 +4,19 @@ import (
   "github.com/gin-gonic/contrib/cache"
   "github.com/gin-gonic/gin"
   "lollipop/pkg/config"
-  "lollipop/pkg/log"
-  "lollipop/pkg/proxy"
+  "lollipop/pkg/logging"
+  "lollipop/pkg/proxy/internal"
   engine "lollipop/pkg/router/gin"
   "time"
 )
 
 func main() {
-  logger := log.Start(log.LogFlags(log.Lfunc | log.Lfile | log.Lline))
+  logger := logging.Start(logging.LogFlags(logging.Lfunc | logging.Lfile | logging.Lline))
   defer logger.Stop()
 
   config.InitConfig()
 
-  log.Debug("start service")
+  logging.Debug("start service")
 
   store := cache.NewInMemoryStore(time.Minute)
 
@@ -24,10 +24,10 @@ func main() {
 
   routerFactory := engine.NewFactory(engine.Config{
     Engine:       gin.Default(),
-    ProxyFactory: customProxyFactory{logger, proxy.DefaultFactory(logger)},
+    ProxyFactory: customProxyFactory{logger, internal.DefaultFactory(logger)},
     Middlewares:  mws,
     Logger:       logger,
-    HandlerFactory: func(configuration *config.EndpointConfig, proxy proxy.Proxy) gin.HandlerFunc {
+    HandlerFactory: func(configuration *config.EndpointConfig, proxy internal.Proxy) gin.HandlerFunc {
       return cache.CachePage(store, configuration.CacheTTL, engine.EndpointHandler(configuration, proxy))
     },
   })
@@ -38,15 +38,15 @@ func main() {
 
 // customProxyFactory adds a logging middleware wrapping the internal factory
 type customProxyFactory struct {
-  logger  log.Logger
-  factory proxy.Factory
+  logger  logging.Logger
+  factory internal.Factory
 }
 
 // New implements the Factory interface
-func (cf customProxyFactory) New(cfg *config.EndpointConfig) (p proxy.Proxy, err error) {
+func (cf customProxyFactory) New(cfg *config.EndpointConfig) (p internal.Proxy, err error) {
   p, err = cf.factory.New(cfg)
   if err == nil {
-    p = proxy.NewLoggingMiddleware(cf.logger, cfg.Endpoint)(p)
+    p = internal.NewLoggingMiddleware(cf.logger, cfg.Endpoint)(p)
   }
   return
 }

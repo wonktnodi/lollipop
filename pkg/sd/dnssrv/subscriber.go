@@ -10,6 +10,14 @@ import (
   "time"
 )
 
+// Namespace is the key for the dns sd module
+const Namespace = "dns"
+
+// Register registers the dns sd subscriber factory
+func Registry() error {
+  return sd.RegisterSubscriberFactory(Namespace, SubscriberFactory)
+}
+
 var (
   // TTL is the duration of the cached data
   TTL = 30 * time.Second
@@ -74,9 +82,12 @@ func (s subscriber) resolve() ([]string, error) {
   if err != nil {
     return []string{}, err
   }
-  instances := make([]string, len(addrs))
-  for i, addr := range addrs {
-    instances[i] = fmt.Sprintf("http://%s", net.JoinHostPort(addr.Target, fmt.Sprint(addr.Port)))
+  instances := []string{}
+  for _, addr := range addrs {
+    instances = append(instances, fmt.Sprintf("http://%s", net.JoinHostPort(addr.Target, fmt.Sprint(addr.Port))))
+    for i := 0; i < int(addr.Weight-1); i++ {
+      instances = append(instances, fmt.Sprintf("http://%s", net.JoinHostPort(addr.Target, fmt.Sprint(addr.Port))))
+    }
   }
   return instances, nil
 }

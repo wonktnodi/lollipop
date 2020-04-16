@@ -1,23 +1,35 @@
-package proxy
+package internal
 
 import (
   "context"
   "lollipop/pkg/config"
   "lollipop/pkg/sd"
   "net/url"
-  "time"
+  "strings"
 )
+
+// NewLoadBalancedMiddleware creates proxy middleware adding the most perfomant balancer
+// over a default subscriber
+func NewLoadBalancedMiddleware(remote *config.Backend) Middleware {
+  return NewLoadBalancedMiddlewareWithSubscriber(sd.GetSubscriber(remote))
+}
+
+// NewLoadBalancedMiddlewareWithSubscriber creates proxy middleware adding the most perfomant balancer
+// over the received subscriber
+func NewLoadBalancedMiddlewareWithSubscriber(subscriber sd.Subscriber) Middleware {
+  return newLoadBalancedMiddleware(sd.NewBalancer(subscriber))
+}
 
 // NewRoundRobinLoadBalancedMiddleware creates proxy middleware adding a round robin balancer
 // over a default subscriber
 func NewRoundRobinLoadBalancedMiddleware(remote *config.Backend) Middleware {
-  return NewRoundRobinLoadBalancedMiddlewareWithSubscriber(sd.FixedSubscriber(remote.Host))
+  return NewRoundRobinLoadBalancedMiddlewareWithSubscriber(sd.GetSubscriber(remote))
 }
 
 // NewRandomLoadBalancedMiddleware creates proxy middleware adding a random balancer
 // over a default subscriber
 func NewRandomLoadBalancedMiddleware(remote *config.Backend) Middleware {
-  return NewRandomLoadBalancedMiddlewareWithSubscriber(sd.FixedSubscriber(remote.Host))
+  return NewRandomLoadBalancedMiddlewareWithSubscriber(sd.GetSubscriber(remote))
 }
 
 // NewRoundRobinLoadBalancedMiddlewareWithSubscriber creates proxy middleware adding a round robin
@@ -29,7 +41,7 @@ func NewRoundRobinLoadBalancedMiddlewareWithSubscriber(subscriber sd.Subscriber)
 // NewRandomLoadBalancedMiddlewareWithSubscriber creates proxy middleware adding a random
 // balancer over the received subscriber
 func NewRandomLoadBalancedMiddlewareWithSubscriber(subscriber sd.Subscriber) Middleware {
-  return newLoadBalancedMiddleware(sd.NewRandomLB(subscriber, time.Now().UnixNano()))
+  return newLoadBalancedMiddleware(sd.NewRandomLB(subscriber))
 }
 
 func newLoadBalancedMiddleware(lb sd.Balancer) Middleware {
@@ -44,14 +56,16 @@ func newLoadBalancedMiddleware(lb sd.Balancer) Middleware {
       }
       r := request.Clone()
 
-      rawURL := []byte{}
-      rawURL = append(rawURL, host...)
-      rawURL = append(rawURL, r.Path...)
-      r.URL, err = url.Parse(string(rawURL))
+      var b strings.Builder
+      b.WriteString(host)
+      b.WriteString(r.Path)
+      r.URL, err = url.Parse(b.String())
       if err != nil {
         return nil, err
       }
-      r.URL.RawQuery = r.Query.Encode()
+      if len(r.Query) > 0 {
+        r.URL.RawQuery += "&" + r.Query.Encode()
+      }
 
       return next[0](ctx, &r)
     }

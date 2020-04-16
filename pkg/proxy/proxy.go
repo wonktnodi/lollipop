@@ -7,24 +7,56 @@ import (
   "lollipop/pkg/config"
 )
 
+// Namespace to be used in extra config
+const Namespace = "github.com/wonktnodi/lollipop/pkg/proxy"
+
+// Metadata is the Metadata of the Response which contains Headers and StatusCode
+type Metadata struct {
+  Headers    map[string][]string
+  StatusCode int
+}
+
 // Response is the entity returned by the proxy
 type Response struct {
   Data       map[string]interface{}
   IsComplete bool
-  Metadata   map[string]string
+  Metadata   Metadata
   Io         io.Reader
 }
 
 var (
-  // ErrNoBackends is the error returned when an endpoint has no backend defined
+  // ErrNoBackends is the error returned when an endpoint has no backends defined
   ErrNoBackends = errors.New("all endpoints must have at least one backend")
-  // ErrTooManyBackends is the error returned when an endpoint has too many backend defined
-  ErrTooManyBackends = errors.New("too many backend for this proxy")
+  // ErrTooManyBackends is the error returned when an endpoint has too many backends defined
+  ErrTooManyBackends = errors.New("too many backends for this proxy")
   // ErrTooManyProxies is the error returned when a middleware has too many proxies defined
   ErrTooManyProxies = errors.New("too many proxies for this proxy middleware")
   // ErrNotEnoughProxies is the error returned when an endpoint has not enough proxies defined
   ErrNotEnoughProxies = errors.New("not enough proxies for this endpoint")
 )
+
+// readCloserWrapper is Io.Reader which is closed when the Context is closed or canceled
+type readCloserWrapper struct {
+  ctx context.Context
+  rc  io.ReadCloser
+}
+
+// NewReadCloserWrapper Creates a new closeable io.Read
+func NewReadCloserWrapper(ctx context.Context, in io.ReadCloser) io.Reader {
+  wrapper := readCloserWrapper{ctx, in}
+  go wrapper.closeOnCancel()
+  return wrapper
+}
+
+func (w readCloserWrapper) Read(b []byte) (int, error) {
+  return w.rc.Read(b)
+}
+
+// closeOnCancel closes the io.Reader when the context is Done
+func (w readCloserWrapper) closeOnCancel() {
+  <-w.ctx.Done()
+  w.rc.Close()
+}
 
 // Proxy processes a request in a given context and returns a response and an error
 type Proxy func(ctx context.Context, request *Request) (*Response, error)
@@ -35,7 +67,7 @@ type BackendFactory func(remote *config.Backend) Proxy
 // Middleware adds a middleware, decorator or wrapper over a collection of proxies,
 // exposing a proxy interface.
 //
-// Proxy middleware can be stacked:
+// Proxy middlewares can be stacked:
 //	var p Proxy
 //	p := EmptyMiddleware(NoopProxy)
 //	response, err := p(ctx, r)

@@ -1,9 +1,9 @@
-package proxy
+package internal
 
 import (
   "context"
   "lollipop/pkg/config"
-  "lollipop/pkg/log"
+  "lollipop/pkg/logging"
   "time"
 )
 
@@ -39,9 +39,9 @@ func NewMergeDataMiddleware(endpointConfig *config.EndpointConfig) Middleware {
       for i := 0; i < len(next); i++ {
         select {
         case err = <-failed:
-          log.Trace("got failed: ", err)
+          logging.Trace("got failed: ", err)
         case responses[i] = <-parts:
-          log.Tracef("got response[%d]: %#v", i, responses[i])
+          logging.Tracef("got response[%d]: %#v", i, responses[i])
           isEmpty = false
         }
       }
@@ -73,9 +73,9 @@ func requestPart(ctx context.Context, next Proxy, request *Request, out chan<- *
   }
   select {
   case out <- in:
-    log.Tracef("got response: %#v", in)
+    logging.Tracef("got response: %#v", in)
   case <-ctx.Done():
-    log.Trace("request canceled")
+    logging.Tracef("request canceled")
     failed <- ctx.Err()
   }
   cancel()

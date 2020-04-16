@@ -3,13 +3,12 @@ package gin
 import (
   "github.com/gin-gonic/gin"
   "io/ioutil"
-  "lollipop/pkg/log"
+  "lollipop/pkg/logging"
 )
 
 // DebugHandler creates a dummy handler function, useful for quick integration tests
-func DebugHandler(logger log.Logger) gin.HandlerFunc {
+func DebugHandler(logger logging.Logger) gin.HandlerFunc {
   return func(c *gin.Context) {
-    param := c.Params.ByName("param")
     logger.Debug("Method:", c.Request.Method)
     logger.Debug("URL:", c.Request.RequestURI)
     logger.Debug("Query:", c.Request.URL.Query())
@@ -20,7 +19,6 @@ func DebugHandler(logger log.Logger) gin.HandlerFunc {
     logger.Debug("Body:", string(body))
     c.JSON(200, gin.H{
       "message": "pong",
-      "uri":     param,
     })
   }
 }

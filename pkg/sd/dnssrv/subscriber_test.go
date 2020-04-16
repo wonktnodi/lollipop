@@ -3,32 +3,39 @@ package dnssrv
 import (
   "errors"
   "lollipop/pkg/config"
+  "lollipop/pkg/sd"
   "net"
   "testing"
   "time"
 )
 
 func TestSubscriber_New(t *testing.T) {
+  if err := Registry(); err != nil {
+    t.Error("registering the dns module:", err.Error())
+  }
   srvSet := []*net.SRV{
     {
       Port:   80,
       Target: "127.0.0.1",
+      Weight: 1,
     },
     {
       Port:   81,
       Target: "127.0.0.1",
+      Weight: 2,
     },
   }
   DefaultLookup = func(service, proto, name string) (cname string, addrs []*net.SRV, err error) {
     return "cname", srvSet, nil
   }
 
-  s := SubscriberFactory(&config.Backend{Host: []string{"some.example.tld"}})
+  s := sd.GetSubscriber(&config.Backend{Host: []string{"some.example.tld"}, SD: Namespace})
   hosts, err := s.Hosts()
+
   if err != nil {
     t.Error("Getting the hosts:", err.Error())
   }
-  if len(hosts) != 2 {
+  if len(hosts) != 3 {
     t.Error("Wrong number of hosts:", len(hosts))
   }
   if hosts[0] != "http://127.0.0.1:80" {
@@ -36,6 +43,9 @@ func TestSubscriber_New(t *testing.T) {
   }
   if hosts[1] != "http://127.0.0.1:81" {
     t.Error("Wrong host #1 (expected http://127.0.0.1:81):", hosts[1])
+  }
+  if hosts[2] != "http://127.0.0.1:81" {
+    t.Error("Wrong host #2 (expected http://127.0.0.1:81):", hosts[2])
   }
 }
 

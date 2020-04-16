@@ -1,13 +1,23 @@
 package proxy
 
-import "strings"
+import (
+  "github.com/devopsfaith/flatmap/tree"
+  "lollipop/pkg/config"
+  "strings"
+)
 
 // EntityFormatter formats the response data
 type EntityFormatter interface {
-  Format(entity Response) Response
+  Format(Response) Response
 }
 
-type propertyFilter func(entity *Response)
+// EntityFormatterFunc holds the formatter function
+type EntityFormatterFunc func(Response) Response
+
+// Format implements the EntityFormatter interface
+func (e EntityFormatterFunc) Format(entity Response) Response { return e(entity) }
+
+type propertyFilter func(*Response)
 
 type entityFormatter struct {
   Target         string
@@ -16,22 +26,26 @@ type entityFormatter struct {
   Mapping        map[string]string
 }
 
-// NewEntityFormatter creates an entity formatter with the received params
-func NewEntityFormatter(target string, whitelist, blacklist []string, group string, mappings map[string]string) EntityFormatter {
-  var propertyFilter propertyFilter
-  if len(whitelist) > 0 {
-    propertyFilter = newWhitelistingFilter(whitelist)
-  } else {
-    propertyFilter = newBlacklistingFilter(blacklist)
+// NewEntityFormatter creates an entity formatter with the received backend definition
+func NewEntityFormatter(remote *config.Backend) EntityFormatter {
+  if ef := newFlatmapFormatter(remote); ef != nil {
+    return ef
   }
-  sanitizedMappings := make(map[string]string, len(mappings))
-  for i, m := range mappings {
+
+  var propertyFilter propertyFilter
+  if len(remote.Whitelist) > 0 {
+    propertyFilter = newWhitelistingFilter(remote.Whitelist)
+  } else {
+    propertyFilter = newBlacklistingFilter(remote.Blacklist)
+  }
+  sanitizedMappings := make(map[string]string, len(remote.Mapping))
+  for i, m := range remote.Mapping {
     v := strings.Split(m, ".")
     sanitizedMappings[i] = v[0]
   }
   return entityFormatter{
-    Target:         target,
-    Prefix:         group,
+    Target:         remote.Target,
+    Prefix:         remote.Group,
     PropertyFilter: propertyFilter,
     Mapping:        sanitizedMappings,
   }
@@ -70,56 +84,65 @@ func extractTarget(target string, entity *Response) {
   }
 }
 
-func newWhitelistingFilter(whitelist []string) propertyFilter {
-  wl := make(map[string]map[string]interface{}, len(whitelist))
-  for _, k := range whitelist {
-    keys := strings.Split(k, ".")
-    tmp := make(map[string]interface{}, len(keys)-1)
-    if len(keys) > 1 {
-      if _, ok := wl[keys[0]]; ok {
-        for _, k := range keys[1:] {
-          wl[keys[0]][k] = nil
+func whitelistPrune(wlDict map[string]interface{}, inDict map[string]interface{}) bool {
+  canDelete := true
+  var deleteSibling bool
+  for k, v := range inDict {
+    deleteSibling = true
+    if subWl, ok := wlDict[k]; ok {
+      if subWlDict, okk := subWl.(map[string]interface{}); okk {
+        if subInDict, isDict := v.(map[string]interface{}); isDict && !whitelistPrune(subWlDict, subInDict) {
+          deleteSibling = false
         }
       } else {
-        for _, k := range keys[1:] {
-          tmp[k] = nil
-        }
-        wl[keys[0]] = tmp
+        // whitelist leaf, maintain this branch
+        deleteSibling = false
       }
-    } else {
-      wl[keys[0]] = tmp
     }
+    if deleteSibling {
+      delete(inDict, k)
+    } else {
+      canDelete = false
+    }
+  }
+  return canDelete
+}
+
+func newWhitelistingFilter(whitelist []string) propertyFilter {
+  wlDict := make(map[string]interface{})
+  for _, k := range whitelist {
+    wlFields := strings.Split(k, ".")
+    d := buildDictPath(wlDict, wlFields[:len(wlFields)-1])
+    d[wlFields[len(wlFields)-1]] = true
   }
 
   return func(entity *Response) {
-    accumulator := make(map[string]interface{}, len(whitelist))
-    for k, v := range entity.Data {
-      if sub, ok := wl[k]; ok {
-        if len(sub) > 0 {
-          if tmp := whitelistFilterSub(v, sub); len(tmp) > 0 {
-            accumulator[k] = tmp
-          }
-        } else {
-          accumulator[k] = v
-        }
+    if whitelistPrune(wlDict, entity.Data) {
+      for k := range entity.Data {
+        delete(entity.Data, k)
       }
     }
-    *entity = Response{Data: accumulator, IsComplete: entity.IsComplete}
   }
 }
 
-func whitelistFilterSub(v interface{}, whitelist map[string]interface{}) map[string]interface{} {
-  entity, ok := v.(map[string]interface{})
-  if !ok {
-    return map[string]interface{}{}
-  }
-  tmp := make(map[string]interface{}, len(whitelist))
-  for k, v := range entity {
-    if _, ok := whitelist[k]; ok {
-      tmp[k] = v
+func buildDictPath(accumulator map[string]interface{}, fields []string) map[string]interface{} {
+  var ok bool
+  var c map[string]interface{}
+  var fIdx int
+  fEnd := len(fields)
+  p := accumulator
+  for fIdx = 0; fIdx < fEnd; fIdx++ {
+    if c, ok = p[fields[fIdx]].(map[string]interface{}); !ok {
+      break
     }
+    p = c
   }
-  return tmp
+  for ; fIdx < fEnd; fIdx++ {
+    c = make(map[string]interface{})
+    p[fields[fIdx]] = c
+    p = c
+  }
+  return p
 }
 
 func newBlacklistingFilter(blacklist []string) propertyFilter {
@@ -159,4 +182,92 @@ func blacklistFilterSub(v interface{}, blacklist []string) map[string]interface{
     delete(tmp, key)
   }
   return tmp
+}
+
+const flatmapKey = "flatmap_filter"
+
+type flatmapFormatter struct {
+  Target string
+  Prefix string
+  Ops    []flatmapOp
+}
+
+type flatmapOp struct {
+  Type string
+  Args [][]string
+}
+
+// Format implements the EntityFormatter interface
+func (e flatmapFormatter) Format(entity Response) Response {
+  if e.Target != "" {
+    extractTarget(e.Target, &entity)
+  }
+
+  e.processOps(&entity)
+
+  if e.Prefix != "" {
+    entity.Data = map[string]interface{}{e.Prefix: entity.Data}
+  }
+  return entity
+}
+
+func (e flatmapFormatter) processOps(entity *Response) {
+  flatten, err := tree.New(entity.Data)
+  if err != nil {
+    return
+  }
+  for _, op := range e.Ops {
+    switch op.Type {
+    case "move":
+      flatten.Move(op.Args[0], op.Args[1])
+    case "del":
+      flatten.Del(op.Args[0])
+    default:
+    }
+  }
+
+  entity.Data, _ = flatten.Get([]string{}).(map[string]interface{})
+}
+
+func newFlatmapFormatter(remote *config.Backend) EntityFormatter {
+  if v, ok := remote.ExtraConfig[Namespace]; ok {
+    if e, ok := v.(map[string]interface{}); ok {
+      if vs, ok := e[flatmapKey].([]interface{}); ok {
+        if len(vs) == 0 {
+          return nil
+        }
+        ops := []flatmapOp{}
+        for _, v := range vs {
+          m, ok := v.(map[string]interface{})
+          if !ok {
+            continue
+          }
+          op := flatmapOp{}
+          if t, ok := m["type"].(string); ok {
+            op.Type = t
+          } else {
+            continue
+          }
+          if args, ok := m["args"].([]interface{}); ok {
+            op.Args = make([][]string, len(args))
+            for k, arg := range args {
+              if t, ok := arg.(string); ok {
+                op.Args[k] = strings.Split(t, ".")
+              }
+            }
+          }
+          ops = append(ops, op)
+        }
+        if len(ops) == 0 {
+          return nil
+        }
+        return &flatmapFormatter{
+          Target: remote.Target,
+          Prefix: remote.Group,
+          Ops:    ops,
+        }
+      }
+    }
+  }
+  return nil
 }
