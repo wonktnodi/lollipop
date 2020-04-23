@@ -5,8 +5,8 @@ import (
   "lollipop/pkg/registry"
 )
 
-// GetRegister returns the package registry
-func GetRegister() *DecoderRegister {
+// GetRegistry returns the package registry
+func GetRegistry() *DecoderRegister {
 	return decoders
 }
 

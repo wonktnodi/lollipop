@@ -21,7 +21,7 @@ type Register struct {
 // NewRegister returns a new register to be used by the plugin loader
 func NewRegister() *Register {
 	return &Register{
-		Decoder:  encoding.GetRegister(),
+		Decoder:  encoding.GetRegistry(),
 		SD:       sd.GetRegister(),
 		External: registry.New(),
 	}

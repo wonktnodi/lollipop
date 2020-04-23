@@ -1,4 +1,4 @@
-package internal
+package proxy
 
 import (
   "context"
@@ -6,8 +6,6 @@ import (
   "lollipop/pkg/config"
   "time"
 )
-
-var errNullResult = errors.New("invalid response")
 
 // NewConcurrentMiddleware creates a proxy middleware that enables sending several requests concurrently
 func NewConcurrentMiddleware(remote *config.Backend) Middleware {
@@ -50,6 +48,8 @@ func NewConcurrentMiddleware(remote *config.Backend) Middleware {
     }
   }
 }
+
+var errNullResult = errors.New("invalid response")
 
 func processConcurrentCall(ctx context.Context, next Proxy, request *Request, out chan<- *Response, failed chan<- error) {
   localCtx, cancel := context.WithCancel(ctx)
